@@ -412,21 +412,29 @@ async function attemptTurnstileCdp(page) {
             }
 
             if (page.url().includes('dashboard')) {
-                await page.goto('https://dashboard.katabump.com/auth/logout');
+                await page.goto('https://dashboard.katabump.com/auth/logout', { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
                 await page.waitForTimeout(2000);
             }
-            await page.goto('https://dashboard.katabump.com/auth/login');
-            await page.waitForTimeout(2000);
-            if (page.url().includes('dashboard')) {
-                await page.goto('https://dashboard.katabump.com/auth/logout');
-                await page.waitForTimeout(2000);
-                await page.goto('https://dashboard.katabump.com/auth/login');
+
+            console.log('正在打开登录页面...');
+            await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(3000);
+
+            // 检查并尝试清理 Cloudflare / Turnstile 验证屏
+            console.log('   >> 检查页面是否触发了 Cloudflare 验证屏...');
+            for (let checkSec = 0; checkSec < 10; checkSec++) {
+                const cdpOk = await attemptTurnstileCdp(page);
+                if (cdpOk) {
+                    console.log('   >> 尝试通过 CDP 点击 Cloudflare 验证框...');
+                    await page.waitForTimeout(3000);
+                } else {
+                    await page.waitForTimeout(1000);
+                }
             }
 
             console.log('正在输入凭据...');
             try {
-                // 使用多样式选择器兼容，并延长等待超时到 15 秒
-                const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="Email"]').first();
+                const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="Email"], #email').first();
                 await emailInput.waitFor({ state: 'visible', timeout: 15000 });
                 await emailInput.fill(user.username);
 
@@ -483,7 +491,17 @@ async function attemptTurnstileCdp(page) {
                 } catch (e) { }
 
             } catch (e) {
-                console.log('登录错误:', e.message);
+                console.log('登录输入框未找到/登录错误:', e.message);
+
+                const debugShotPath = path.join(photoDir, `${safeUsername}_login_timeout.png`);
+                try {
+                    await page.screenshot({ path: debugShotPath, fullPage: true });
+                    console.log(`[调试] 已保存加载失败时的页面截图至: ${debugShotPath}`);
+                    await sendTelegramMessage(`⚠️ *登录页面加载超时*\n用户: ${user.username}\n原因: 未能定位到登录框，请查看截图`, debugShotPath);
+                } catch (shotErr) {
+                    console.log('截图失败:', shotErr.message);
+                }
+                continue;
             }
 
             console.log('正在寻找 "See" 链接...');
