@@ -425,10 +425,12 @@ async function attemptTurnstileCdp(page) {
 
             console.log('正在输入凭据...');
             try {
-                const emailInput = page.getByRole('textbox', { name: 'Email' });
-                await emailInput.waitFor({ state: 'visible', timeout: 5000 });
+                // 使用多样式选择器兼容，并延长等待超时到 15 秒
+                const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="Email"]').first();
+                await emailInput.waitFor({ state: 'visible', timeout: 15000 });
                 await emailInput.fill(user.username);
-                const pwdInput = page.getByRole('textbox', { name: 'Password' });
+
+                const pwdInput = page.locator('input[type="password"], input[name="password"]').first();
                 await pwdInput.fill(user.password);
                 await page.waitForTimeout(500);
 
