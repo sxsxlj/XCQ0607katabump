@@ -2,9 +2,8 @@ name: Auto Renew Katabump Server
 
 on:
   schedule:
-    # 每天 UTC 时间 0:00 (北京时间 8:00) 自动运行一次
     - cron: '0 0 * * *'
-  workflow_dispatch: # 支持手动触发运行
+  workflow_dispatch:
 
 jobs:
   renew:
@@ -28,6 +27,12 @@ jobs:
           sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
           google-chrome --version
 
+      # 【新增】安装 Xray 核心，用于将 VLESS 转换为本地 HTTP 代理
+      - name: Install Xray Core
+        run: |
+          bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+          xray --version
+
       - name: Install Node dependencies
         run: |
           npm install
@@ -43,14 +48,11 @@ jobs:
 
       - name: Run Renew Script
         env:
-          # 必填Secrets：包含多用户账号密码的 JSON 字符串
           USERS_JSON: ${{ secrets.USERS_JSON }}
-          # 可选Secrets：Telegram 机器人通知配置
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          # 可选Secrets：HTTP/HTTPS 代理服务 (格式: http://user:pass@host:port)
+          # 此处直接填你的 vless:// 链接，或者填写链接对应的 Secret 名称
           HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-          # 系统环境配置
           CHROME_PATH: '/usr/bin/google-chrome'
           NODE_ENV: 'production'
         run: |
