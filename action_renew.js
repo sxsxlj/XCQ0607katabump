@@ -49,7 +49,7 @@ const DEBUG_PORT = 9222;
 
 process.env.NO_PROXY = 'localhost,127.0.0.1';
 
-// --- 代理配置与 VLESS 支持 (你需要的节点逻辑) ---
+// --- 代理配置与 VLESS 支持 ---
 let HTTP_PROXY = process.env.HTTP_PROXY;
 let PROXY_CONFIG = null;
 
@@ -287,7 +287,6 @@ function getUsers() {
         await context.setHTTPCredentials(null);
     }
 
-    // --- 作者原汁原味的核心续期逻辑 ---
     for (let i = 0; i < users.length; i++) {
         const user = users[i];
         const safeUsername = user.username.replace(/[^a-z0-9]/gi, '_');
@@ -338,11 +337,23 @@ function getUsers() {
 
             console.log('正在寻找 "See" 链接...');
             try {
+                const currentUrl = page.url();
+                console.log(`   >> 当前页面 URL: ${currentUrl}`);
+
+                if (currentUrl.includes('/auth/login')) {
+                    console.log('   >> ❌ 发现仍停留在登录页，说明登录被拦截或失败');
+                    const loginFailPath = path.join(photoDir, `${safeUsername}_stuck_login.png`);
+                    await page.screenshot({ path: loginFailPath, fullPage: true });
+                    continue;
+                }
+
                 await page.getByRole('link', { name: 'See' }).first().waitFor({ timeout: 15000 });
                 await page.waitForTimeout(1000);
                 await page.getByRole('link', { name: 'See' }).first().click();
             } catch (e) {
                 console.log('未找到 "See" 按钮。');
+                const notFoundPath = path.join(photoDir, `${safeUsername}_no_see.png`);
+                try { await page.screenshot({ path: notFoundPath, fullPage: true }); } catch (err) {}
                 continue;
             }
 
