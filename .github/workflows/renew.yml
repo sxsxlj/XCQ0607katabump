@@ -1,8 +1,8 @@
-name: Auto Renew Katabump Server
+name: Katabump Auto Renew
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -13,52 +13,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Install Google Chrome
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget gnome-keyring
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
-          google-chrome --version
-
-      - name: Install Xray Core
-        run: |
-          curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | sudo bash
-          xray --version
-
-      - name: Install Node dependencies
+      - name: Install Dependencies
         run: |
           npm install
 
-      - name: Install Playwright Browsers
+      - name: Install Xray
         run: |
-          npx playwright install chromium
-          npx playwright install-deps chromium
+          bash <(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install --version v25.1.1
 
-      - name: Create screenshots directory
-        run: |
-          mkdir -p screenshots
-
-      - name: Run Renew Script
+      - name: Run Auto Renew Script
         env:
           USERS_JSON: ${{ secrets.USERS_JSON }}
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-          CHROME_PATH: '/usr/bin/google-chrome'
-          NODE_ENV: 'production'
         run: |
           node action_renew.js
 
-      - name: Upload screenshots artifact on failure
-        if: failure()
+      - name: Upload Debug Screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: failure-screenshots
+          name: debug-screenshots
           path: screenshots/
-          retention-days: 7
+          if-no-files-found: ignore
