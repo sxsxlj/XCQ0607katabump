@@ -9,7 +9,6 @@ const http = require('http');
 const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN;
 const TG_CHAT_ID = process.env.TG_CHAT_ID;
 
-// 确保截图目录存在
 const photoDir = path.join(process.cwd(), 'screenshots');
 if (!fs.existsSync(photoDir)) {
     fs.mkdirSync(photoDir, { recursive: true });
@@ -50,7 +49,7 @@ const DEBUG_PORT = 9222;
 
 process.env.NO_PROXY = 'localhost,127.0.0.1';
 
-// --- Proxy Configuration & VLESS Support ---
+// --- 代理配置与 VLESS 支持 (你需要的节点逻辑) ---
 let HTTP_PROXY = process.env.HTTP_PROXY;
 let PROXY_CONFIG = null;
 
@@ -164,56 +163,6 @@ if (HTTP_PROXY) {
     }
 }
 
-// --- INJECTED_SCRIPT ---
-const INJECTED_SCRIPT = `
-(function() {
-    if (window.self === window.top) return;
-
-    try {
-        function getRandomInt(min, max) {
-            return Math.floor(Math.random() * (max - min + 1)) + min;
-        }
-        let screenX = getRandomInt(800, 1200);
-        let screenY = getRandomInt(400, 600);
-        
-        Object.defineProperty(MouseEvent.prototype, 'screenX', { value: screenX });
-        Object.defineProperty(MouseEvent.prototype, 'screenY', { value: screenY });
-    } catch (e) { }
-
-    try {
-        const originalAttachShadow = Element.prototype.attachShadow;
-        
-        Element.prototype.attachShadow = function(init) {
-            const shadowRoot = originalAttachShadow.call(this, init);
-            
-            if (shadowRoot) {
-                const checkAndReport = () => {
-                    const checkbox = shadowRoot.querySelector('input[type="checkbox"]');
-                    if (checkbox) {
-                        const rect = checkbox.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0 && window.innerWidth > 0 && window.innerHeight > 0) {
-                            const xRatio = (rect.left + rect.width / 2) / window.innerWidth;
-                            const yRatio = (rect.top + rect.height / 2) / window.innerHeight;
-                            window.__turnstile_data = { xRatio, yRatio };
-                            return true;
-                        }
-                    }
-                    return false;
-                };
-
-                if (!checkAndReport()) {
-                    const observer = new MutationObserver(() => {
-                        if (checkAndReport()) observer.disconnect();
-                    });
-                    observer.observe(shadowRoot, { childList: true, subtree: true });
-                }
-            }
-            return shadowRoot;
-        };
-    } catch (e) { }
-})();
-`;
-
 function checkPort(port) {
     return new Promise((resolve) => {
         const req = http.get(`http://localhost:${port}/json/version`, (res) => {
@@ -294,52 +243,6 @@ function getUsers() {
     return [];
 }
 
-async function attemptTurnstileCdp(page) {
-    const frames = page.frames();
-    for (const frame of frames) {
-        try {
-            const data = await frame.evaluate(() => window.__turnstile_data).catch(() => null);
-
-            if (data) {
-                const iframeElement = await frame.frameElement();
-                if (!iframeElement) continue;
-
-                const box = await iframeElement.boundingBox();
-                if (!box) continue;
-
-                const offsetX = (Math.random() - 0.5) * 4;
-                const offsetY = (Math.random() - 0.5) * 4;
-                const clickX = box.x + (box.width * data.xRatio) + offsetX;
-                const clickY = box.y + (box.height * data.yRatio) + offsetY;
-
-                const client = await page.context().newCDPSession(page);
-
-                await client.send('Input.dispatchMouseEvent', {
-                    type: 'mousePressed',
-                    x: clickX,
-                    y: clickY,
-                    button: 'left',
-                    clickCount: 1
-                });
-
-                await new Promise(r => setTimeout(r, 60 + Math.random() * 80));
-
-                await client.send('Input.dispatchMouseEvent', {
-                    type: 'mouseReleased',
-                    x: clickX,
-                    y: clickY,
-                    button: 'left',
-                    clickCount: 1
-                });
-
-                await client.detach();
-                return true;
-            }
-        } catch (e) { }
-    }
-    return false;
-}
-
 (async () => {
     const users = getUsers();
     if (users.length === 0) {
@@ -384,8 +287,7 @@ async function attemptTurnstileCdp(page) {
         await context.setHTTPCredentials(null);
     }
 
-    await page.addInitScript(INJECTED_SCRIPT);
-
+    // --- 作者原汁原味的核心续期逻辑 ---
     for (let i = 0; i < users.length; i++) {
         const user = users[i];
         const safeUsername = user.username.replace(/[^a-z0-9]/gi, '_');
@@ -394,12 +296,9 @@ async function attemptTurnstileCdp(page) {
         try {
             if (page.isClosed()) {
                 page = await context.newPage();
-                await page.addInitScript(INJECTED_SCRIPT);
             }
 
-            console.log('正在重置会话并前往登录页...');
-            await page.goto('https://dashboard.katabump.com/auth/logout', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-            await page.waitForTimeout(1500);
+            console.log('正在前往登录页...');
             await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(2000);
 
@@ -413,47 +312,8 @@ async function attemptTurnstileCdp(page) {
                 await pwdInput.fill(user.password);
                 await page.waitForTimeout(500);
 
-                console.log('   >> 正在检查登录前 Turnstile...');
-                let cdpClickResult = false;
-                for (let findAttempt = 0; findAttempt < 10; findAttempt++) {
-                    cdpClickResult = await attemptTurnstileCdp(page);
-                    if (cdpClickResult) break;
-                    await page.waitForTimeout(1000);
-                }
-
-                if (cdpClickResult) {
-                    console.log('   >> 登录 CDP 点击生效，等待 5 秒验证...');
-                    for (let waitSec = 0; waitSec < 5; waitSec++) {
-                        const frames = page.frames();
-                        let isSuccess = false;
-                        for (const f of frames) {
-                            if (f.url().includes('cloudflare')) {
-                                try {
-                                    if (await f.getByText('Success!', { exact: false }).isVisible({ timeout: 500 })) {
-                                        isSuccess = true;
-                                        break;
-                                    }
-                                } catch (e) { }
-                            }
-                        }
-                        if (isSuccess) break;
-                        await page.waitForTimeout(1000);
-                    }
-                }
-
                 await page.getByRole('button', { name: 'Login', exact: true }).click();
-
-                // 使用函数精确匹配路径，避免被域名里的 dashboard 误导
-                try {
-                    console.log('   >> 正在等待登录跳转至后台...');
-                    await page.waitForURL(url => url.pathname.includes('/dashboard'), { timeout: 20000 });
-                    console.log('   >> ✅ 成功进入后台仪表盘！');
-                } catch (e) {
-                    console.log('   >> ⚠️ 登录后跳转超时或被拦截，当前 URL:', page.url());
-                }
-
-                // 给予 2 秒缓冲时间，确保服务器列表异步表格完全渲染出来
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(3000);
 
                 try {
                     const errorMsg = page.getByText('Incorrect password or no account');
@@ -478,15 +338,11 @@ async function attemptTurnstileCdp(page) {
 
             console.log('正在寻找 "See" 链接...');
             try {
-                // 等待表格或卡片加载完成
-                await page.waitForSelector('table, .card', { timeout: 15000 }).catch(() => {});
-                await page.waitForTimeout(1500);
-
-                const seeLink = page.locator('a, button').filter({ hasText: /^See$/ }).first();
-                await seeLink.waitFor({ state: 'visible', timeout: 10000 });
-                await seeLink.click();
+                await page.getByRole('link', { name: 'See' }).first().waitFor({ timeout: 15000 });
+                await page.waitForTimeout(1000);
+                await page.getByRole('link', { name: 'See' }).first().click();
             } catch (e) {
-                console.log('未找到 "See" 按钮，当前页面 URL:', page.url());
+                console.log('未找到 "See" 按钮。');
                 continue;
             }
 
@@ -552,15 +408,6 @@ async function attemptTurnstileCdp(page) {
                         if (renewSuccess) break;
 
                         if (hasCaptchaError) {
-                            for (let findAttempt = 0; findAttempt < 10; findAttempt++) {
-                                const ok = await attemptTurnstileCdp(page);
-                                if (ok) {
-                                    await page.waitForTimeout(3000);
-                                    await confirmBtn.click();
-                                    break;
-                                }
-                                await page.waitForTimeout(1000);
-                            }
                             await page.reload();
                             await page.waitForTimeout(3000);
                             continue;
