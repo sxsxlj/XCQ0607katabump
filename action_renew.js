@@ -239,6 +239,7 @@ async function launchChrome() {
     console.log(`正在启动 Chrome (路径: ${CHROME_PATH})...`);
 
     const args = [
+        '--headless=new',
         `--remote-debugging-port=${DEBUG_PORT}`,
         '--no-first-run',
         '--no-default-browser-check',
@@ -247,7 +248,9 @@ async function launchChrome() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--user-data-dir=/tmp/chrome_user_data',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--disable-software-rasterizer',
+        '--disable-extensions'
     ];
 
     if (PROXY_CONFIG) {
