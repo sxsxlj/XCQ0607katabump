@@ -443,13 +443,13 @@ async function attemptTurnstileCdp(page) {
 
                 await page.getByRole('button', { name: 'Login', exact: true }).click();
 
-                // 显式等待跳转到 dashboard 页面，解决无头模式下异步渲染问题
+                // 使用函数精确匹配路径，避免被域名里的 dashboard 误导
                 try {
                     console.log('   >> 正在等待登录跳转至后台...');
-                    await page.waitForURL('**/dashboard**', { timeout: 20000 });
+                    await page.waitForURL(url => url.pathname.includes('/dashboard'), { timeout: 20000 });
                     console.log('   >> ✅ 成功进入后台仪表盘！');
                 } catch (e) {
-                    console.log('   >> ⚠️ 登录后跳转超时，当前 URL:', page.url());
+                    console.log('   >> ⚠️ 登录后跳转超时或被拦截，当前 URL:', page.url());
                 }
 
                 // 给予 2 秒缓冲时间，确保服务器列表异步表格完全渲染出来
