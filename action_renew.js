@@ -250,12 +250,16 @@ async function launchChrome() {
         '--user-data-dir=/tmp/chrome_user_data',
         '--disable-dev-shm-usage',
         '--disable-software-rasterizer',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--lang=en-US,en'
     ];
 
     if (PROXY_CONFIG) {
+        console.log(`[代理] 正在为 Chrome 浏览器应用代理: ${PROXY_CONFIG.server}`);
         args.push(`--proxy-server=${PROXY_CONFIG.server}`);
         args.push('--proxy-bypass-list=<-loopback>');
+    } else {
+        console.log('[代理] 警告：没有检测到有效的 PROXY_CONFIG，Chrome 将直连访问！');
     }
 
     const chrome = spawn(CHROME_PATH, args, {
@@ -384,6 +388,13 @@ async function attemptTurnstileCdp(page) {
     }
 
     const context = browser.contexts()[0];
+
+    // 覆盖 User-Agent 与 Headers，抹去 HeadlessChrome 痕迹
+    await context.setExtraHTTPHeaders({
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    });
+
     let page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
     page.setDefaultTimeout(60000);
 
