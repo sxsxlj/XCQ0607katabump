@@ -318,10 +318,13 @@ async function attemptTurnstileCdp(page) {
                 const box = await iframeElement.boundingBox();
                 if (!box) continue;
 
-                const clickX = box.x + (box.width * data.xRatio);
-                const clickY = box.y + (box.height * data.yRatio);
+                // 增加 ±3px 随机偏移，模拟真人随机点击
+                const offsetX = (Math.random() - 0.5) * 6;
+                const offsetY = (Math.random() - 0.5) * 6;
+                const clickX = box.x + (box.width * data.xRatio) + offsetX;
+                const clickY = box.y + (box.height * data.yRatio) + offsetY;
 
-                console.log(`>> 计算点击坐标: (${clickX.toFixed(2)}, ${clickY.toFixed(2)})`);
+                console.log(`>> 计算随机点击坐标: (${clickX.toFixed(2)}, ${clickY.toFixed(2)})`);
 
                 const client = await page.context().newCDPSession(page);
 
@@ -333,7 +336,7 @@ async function attemptTurnstileCdp(page) {
                     clickCount: 1
                 });
 
-                await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
+                await new Promise(r => setTimeout(r, 80 + Math.random() * 120));
 
                 await client.send('Input.dispatchMouseEvent', {
                     type: 'mouseReleased',
@@ -433,15 +436,39 @@ async function attemptTurnstileCdp(page) {
 
             // 检查并尝试清理 Cloudflare / Turnstile 验证屏
             console.log('   >> 检查页面是否触发了 Cloudflare 验证屏...');
-            for (let checkSec = 0; checkSec < 10; checkSec++) {
+            for (let checkSec = 0; checkSec < 8; checkSec++) {
                 const cdpOk = await attemptTurnstileCdp(page);
                 if (cdpOk) {
                     console.log('   >> 尝试通过 CDP 点击 Cloudflare 验证框...');
-                    await page.waitForTimeout(3000);
+                    await page.waitForTimeout(2000);
+                    break;
                 } else {
                     await page.waitForTimeout(1000);
                 }
             }
+
+            // 自动清理 Cloudflare Troubleshoot 遮罩弹窗
+            try {
+                const removed = await page.evaluate(() => {
+                    let cleaned = false;
+                    const headers = Array.from(document.querySelectorAll('h1, h2, div, span'));
+                    const targetHeader = headers.find(el => el.textContent && el.textContent.includes('Troubleshoot'));
+                    if (targetHeader) {
+                        let modal = targetHeader.closest('div[class*="modal"], div[class*="dialog"], div[role="dialog"]') || targetHeader.parentElement;
+                        if (modal) {
+                            modal.remove();
+                            cleaned = true;
+                        }
+                    }
+                    return cleaned;
+                });
+                if (removed) {
+                    console.log('   >> [清理] 检测到 Cloudflare Troubleshoot 弹窗，已强制移除！');
+                }
+            } catch (e) { }
+
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(1000);
 
             console.log('正在输入凭据...');
             try {
@@ -455,7 +482,7 @@ async function attemptTurnstileCdp(page) {
 
                 console.log('   >> 正在登录前检查 Turnstile (使用 CDP 绕过)...');
                 let cdpClickResult = false;
-                for (let findAttempt = 0; findAttempt < 15; findAttempt++) {
+                for (let findAttempt = 0; findAttempt < 10; findAttempt++) {
                     cdpClickResult = await attemptTurnstileCdp(page);
                     if (cdpClickResult) break;
                     await page.waitForTimeout(1000);
