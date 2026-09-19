@@ -309,10 +309,30 @@ function getUsers() {
                 
                 const pwdInput = page.getByRole('textbox', { name: 'Password' });
                 await pwdInput.fill(user.password);
-                await page.waitForTimeout(500);
 
+                // 增加 Turnstile 缓冲及防拦截时间
+                console.log('   >> 等待 Turnstile 验证码加载与判定 (5秒)...');
+                await page.waitForTimeout(5000);
+
+                try {
+                    const frames = page.frames();
+                    for (const f of frames) {
+                        if (f.url().includes('cloudflare')) {
+                            const checkbox = f.locator('input[type="checkbox"]').first();
+                            if (await checkbox.isVisible({ timeout: 2000 })) {
+                                console.log('   >> 发现复选框验证码，尝试点击...');
+                                await checkbox.click({ force: true });
+                                await page.waitForTimeout(4000);
+                            }
+                        }
+                    }
+                } catch (e) {}
+
+                console.log('   >> 点击登录按钮...');
                 await page.getByRole('button', { name: 'Login', exact: true }).click();
-                await page.waitForTimeout(3000);
+                
+                console.log('   >> 等待系统处理登录跳转...');
+                await page.waitForTimeout(5000);
 
                 try {
                     const errorMsg = page.getByText('Incorrect password or no account');
