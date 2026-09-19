@@ -25,8 +25,9 @@ jobs:
 
       - name: Install Xray
         run: |
-          # 加上 sudo 获取 root 权限，并指定版本号跳过 API 查询避免 403
-          sudo bash <(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install --version v25.1.1
+          # 先将脚本下载到本地 tmp，再通过 sudo 运行，避免 /dev/fd 管道权限丢失
+          curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/install-release.sh
+          sudo bash /tmp/install-release.sh install --version v25.1.1
 
       - name: Run Auto Renew Script
         env:
