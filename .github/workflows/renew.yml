@@ -1,44 +1,65 @@
-name: Katabump Auto Renew
+name: Auto Renew Katabump Server
 
 on:
   schedule:
-    # 每天 UTC 0点 (北京时间 8点) 运行
+    # 每天 UTC 时间 0:00 (北京时间 8:00) 自动运行一次
     - cron: '0 0 * * *'
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch: # 支持手动触发运行
 
 jobs:
   renew:
     runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb
-        npm install
-        npx playwright install-deps chrome
-      
-    - name: Run Renew Script
-      env:
-        # 将 USERS_JSON 配置在 GitHub Repository Secrets 中
-        # 格式: [{"username": "xxx", "password": "xxx"}, ...]
-        USERS_JSON: ${{ secrets.USERS_JSON }}
-        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-      # 使用 xvfb-run 模拟有头环境运行
-      run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node action_renew.js
 
-    - name: Upload Screenshots
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: screenshots
-        path: screenshots/
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnome-keyring
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
+          google-chrome --version
+
+      - name: Install Node dependencies
+        run: |
+          npm install
+
+      - name: Install Playwright Browsers
+        run: |
+          npx playwright install chromium
+          npx playwright install-deps chromium
+
+      - name: Create screenshots directory
+        run: |
+          mkdir -p screenshots
+
+      - name: Run Renew Script
+        env:
+          # 必填Secrets：包含多用户账号密码的 JSON 字符串
+          USERS_JSON: ${{ secrets.USERS_JSON }}
+          # 可选Secrets：Telegram 机器人通知配置
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          # 可选Secrets：HTTP/HTTPS 代理服务 (格式: http://user:pass@host:port)
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+          # 系统环境配置
+          CHROME_PATH: '/usr/bin/google-chrome'
+          NODE_ENV: 'production'
+        run: |
+          node action_renew.js
+
+      - name: Upload screenshots artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: screenshots/
+          retention-days: 7
