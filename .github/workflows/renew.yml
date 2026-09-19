@@ -2,8 +2,9 @@ name: Katabump Auto Renew
 
 on:
   schedule:
+    # 每天定时自动运行（例如 UTC 0点和12点）
     - cron: '0 0,12 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # 支持手动点击 Run workflow 触发
 
 jobs:
   renew:
@@ -24,7 +25,8 @@ jobs:
 
       - name: Install Xray
         run: |
-          bash <(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install --version v25.1.1
+          # 加上 sudo 获取 root 权限，并指定版本号跳过 API 查询避免 403
+          sudo bash <(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install --version v25.1.1
 
       - name: Run Auto Renew Script
         env:
