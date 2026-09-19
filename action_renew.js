@@ -397,23 +397,12 @@ async function attemptTurnstileCdp(page) {
                 await page.addInitScript(INJECTED_SCRIPT);
             }
 
-            console.log('检查会话状态...');
-            if (page.url().includes('/auth/login')) {
-                // 已在登录页
-            } else if (page.url().includes('dashboard')) {
-                await page.goto('https://dashboard.katabump.com/auth/logout', { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
-                await page.waitForTimeout(2000);
-            } else {
-                await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await page.waitForTimeout(2000);
-                if (page.url().includes('dashboard')) {
-                    await page.goto('https://dashboard.katabump.com/auth/logout', { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
-                    await page.waitForTimeout(2000);
-                    await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                }
-            }
+            console.log('正在重置会话并前往登录页...');
+            await page.goto('https://dashboard.katabump.com/auth/logout', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+            await page.waitForTimeout(1500);
+            await page.goto('https://dashboard.katabump.com/auth/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(2000);
 
-            // 使用作者原版的稳定 Role 选择器
             console.log('正在输入凭据...');
             try {
                 const emailInput = page.getByRole('textbox', { name: 'Email' });
@@ -454,6 +443,18 @@ async function attemptTurnstileCdp(page) {
 
                 await page.getByRole('button', { name: 'Login', exact: true }).click();
 
+                // 显式等待跳转到 dashboard 页面，解决无头模式下异步渲染问题
+                try {
+                    console.log('   >> 正在等待登录跳转至后台...');
+                    await page.waitForURL('**/dashboard**', { timeout: 20000 });
+                    console.log('   >> ✅ 成功进入后台仪表盘！');
+                } catch (e) {
+                    console.log('   >> ⚠️ 登录后跳转超时，当前 URL:', page.url());
+                }
+
+                // 给予 2 秒缓冲时间，确保服务器列表异步表格完全渲染出来
+                await page.waitForTimeout(2000);
+
                 try {
                     const errorMsg = page.getByText('Incorrect password or no account');
                     if (await errorMsg.isVisible({ timeout: 3000 })) {
@@ -477,11 +478,15 @@ async function attemptTurnstileCdp(page) {
 
             console.log('正在寻找 "See" 链接...');
             try {
-                await page.getByRole('link', { name: 'See' }).first().waitFor({ timeout: 15000 });
-                await page.waitForTimeout(1000);
-                await page.getByRole('link', { name: 'See' }).first().click();
+                // 等待表格或卡片加载完成
+                await page.waitForSelector('table, .card', { timeout: 15000 }).catch(() => {});
+                await page.waitForTimeout(1500);
+
+                const seeLink = page.locator('a, button').filter({ hasText: /^See$/ }).first();
+                await seeLink.waitFor({ state: 'visible', timeout: 10000 });
+                await seeLink.click();
             } catch (e) {
-                console.log('未找到 "See" 按钮。');
+                console.log('未找到 "See" 按钮，当前页面 URL:', page.url());
                 continue;
             }
 
