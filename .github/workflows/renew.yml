@@ -28,7 +28,7 @@ jobs:
 
       - name: Install Xray Core
         run: |
-          bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+          curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | sudo bash
           xray --version
 
       - name: Install Node dependencies
